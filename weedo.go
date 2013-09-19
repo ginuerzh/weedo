@@ -3,15 +3,21 @@ package weedo
 
 import (
 	"bytes"
-	"fmt"
+	"encoding/json"
+	"errors"
+	//"fmt"
 	"io"
-	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 const (
-	UploadUri = "/submit"
+	DefaultMasterUrl = "http://localhost:9333"
+	UploadUri        = "/submit"
+	LookupUri        = "/dir/lookup?volumeId="
 )
 
 type Client struct {
@@ -26,7 +32,13 @@ type AssignResp struct {
 }
 
 type LookupResp struct {
-	Locations map[string]interface{}
+	Locations []Location
+	Error     string
+}
+
+type Location struct {
+	PublicUrl string
+	Url       string
 }
 
 type UploadResp struct {
@@ -34,37 +46,98 @@ type UploadResp struct {
 	FileName string
 	FileUrl  string
 	Size     int
+	Error    string
 }
 
 func NewClient(masterUrl string) *Client {
+	if !strings.HasPrefix(masterUrl, "http://") {
+		masterUrl = "http://" + masterUrl
+	}
 	return &Client{masterUrl}
 }
 
-func (c *Client) Upload(filename, contentType string, content io.Reader) (url string, e error) {
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-
-	fmt.Println(filename, contentType)
+func (c *Client) Upload(filename string, content io.Reader) (fid string, err error) {
+	buf := new(bytes.Buffer)
+	writer := multipart.NewWriter(buf)
 
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		return "", err
+		return
 	}
 	_, err = io.Copy(part, content)
-	writer.Close()
-
-	fmt.Println(body)
-	resp, err := http.Post(c.Url+UploadUri, "multipart/form-data", body)
 	if err != nil {
-		return "", err
+		return
+	}
+
+	contentType := writer.FormDataContentType()
+	writer.Close()
+	//fmt.Println(contentType)
+
+	resp, err := http.Post(c.Url+UploadUri, contentType, buf)
+	if err != nil {
+		return
 	}
 	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
 
-	if err != nil {
-		return "", err
+	uploadResp := new(UploadResp)
+	decoder := json.NewDecoder(resp.Body)
+	if err = decoder.Decode(uploadResp); err != nil {
+		return
 	}
-	fmt.Println(string(data))
+
+	if uploadResp.Error != "" {
+		err = errors.New(uploadResp.Error)
+		return
+	}
+
+	return uploadResp.Fid, nil
+}
+
+func (c *Client) lookup(volumeId uint64) (url string, err error) {
+	resp, err := http.Get(c.Url + LookupUri + strconv.FormatUint(volumeId, 10))
+	log.Println(c.Url + LookupUri + strconv.FormatUint(volumeId, 10))
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	lookupResp := new(LookupResp)
+	decoder := json.NewDecoder(resp.Body)
+	if err = decoder.Decode(lookupResp); err != nil {
+		return
+	}
+
+	if lookupResp.Error != "" {
+		err = errors.New(lookupResp.Error)
+		return
+	}
+
+	return lookupResp.Locations[0].PublicUrl, nil
+}
+
+func ParseFid(fid string) (id, key, cookie uint64, err error) {
+	s := strings.Split(fid, ",")
+	if len(s) != 2 {
+		return
+	}
+	if id, err = strconv.ParseUint(s[0], 10, 32); err != nil {
+		return
+	}
+
+	return
+}
+
+func (c *Client) GetUrl(fid string) (url string, err error) {
+	id, _, _, err := ParseFid(fid)
+	if err != nil {
+		return
+	}
+
+	if url, err = c.lookup(id); err != nil {
+		return
+	}
+
+	url = "http://" + url + "/" + fid
 
 	return
 }

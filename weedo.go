@@ -96,7 +96,7 @@ func GetUrl(fid string) (url string, err error) {
 	return getUrl(&defaultClient, fid)
 }
 
-func assign(c *Client) (r *assignResp, err error) {
+func (c *Client) assign() (r *assignResp, err error) {
 	resp, err := http.Get(c.Url + AssignUri)
 	if err != nil {
 		return
@@ -117,11 +117,35 @@ func assign(c *Client) (r *assignResp, err error) {
 	}
 
 	r = assign
+	log.Printf("assign fid: %s at %s", r.Fid, r.Url)
 
 	return
 }
 
-func upload(c *Client, filename string, content io.Reader) (r *uploadResp, err error) {
+func AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
+	r, err := defaultClient.assign()
+	if err != nil {
+		return
+	}
+
+	data, contentType, err := makeUploadContent(filename, file)
+	if err != nil {
+		return
+	}
+
+	url := "http://" + r.Url + "/" + r.Fid
+	log.Println(url)
+
+	resp, err := upload(&defaultClient, url, contentType, data)
+	if err == nil {
+		fid = r.Fid
+		size = resp.Size
+	}
+
+	return
+}
+
+func makeUploadContent(filename string, content io.Reader) (data io.Reader, contentType string, err error) {
 	buf := new(bytes.Buffer)
 	writer := multipart.NewWriter(buf)
 
@@ -136,11 +160,15 @@ func upload(c *Client, filename string, content io.Reader) (r *uploadResp, err e
 		return
 	}
 
-	contentType := writer.FormDataContentType()
+	data = buf
+	contentType = writer.FormDataContentType()
 	writer.Close()
-	//fmt.Println(contentType)
 
-	resp, err := http.Post(c.Url+UploadUri, contentType, buf)
+	return
+}
+
+func upload(c *Client, url string, contentType string, data io.Reader) (r *uploadResp, err error) {
+	resp, err := http.Post(url, contentType, data)
 	if err != nil {
 		log.Println(err)
 		return
@@ -165,8 +193,12 @@ func upload(c *Client, filename string, content io.Reader) (r *uploadResp, err e
 	return
 }
 
-func Upload(filename string, content io.Reader) (fid string, size int, err error) {
-	resp, err := upload(&defaultClient, filename, content)
+func Upload(filename string, file io.Reader) (fid string, size int, err error) {
+	data, contentType, err := makeUploadContent(filename, file)
+	if err != nil {
+		return
+	}
+	resp, err := upload(&defaultClient, defaultClient.Url+UploadUri, contentType, data)
 	if err == nil {
 		fid = resp.Fid
 		size = resp.Size
@@ -225,8 +257,12 @@ func NewClient(ip string, port int) *Client {
 	return &Client{masterUrl, make(map[uint64]string)}
 }
 
-func (c *Client) Upload(filename string, content io.Reader) (fid string, size int, err error) {
-	resp, err := upload(c, filename, content)
+func (c *Client) Upload(filename string, file io.Reader) (fid string, size int, err error) {
+	data, contentType, err := makeUploadContent(filename, file)
+	if err != nil {
+		return
+	}
+	resp, err := upload(c, c.Url+UploadUri, contentType, data)
 	if err == nil {
 		fid = resp.Fid
 		size = resp.Size
@@ -259,9 +295,9 @@ func (c *Client) lookup(volumeId uint64) (url string, err error) {
 		return
 	}
 
-	c.volumes[volumeId] = lookup.Locations[0].PublicUrl
+	c.volumes[volumeId] = lookup.Locations[0].Url
 
-	return lookup.Locations[0].PublicUrl, nil
+	return lookup.Locations[0].Url, nil
 }
 
 func (c *Client) GetUrl(fid string) (url string, err error) {

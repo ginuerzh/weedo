@@ -1,4 +1,4 @@
 weedo
 =====
 
-a wrapper for weed-fs
+a weed-fs client written in golang

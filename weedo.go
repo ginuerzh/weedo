@@ -15,10 +15,9 @@ import (
 )
 
 const (
-	DefaultMasterUrl = "http://localhost:9333"
-	AssignUri        = "/dir/assign"
-	UploadUri        = "/submit"
-	LookupUri        = "/dir/lookup?volumeId="
+	AssignUri = "/dir/assign"
+	UploadUri = "/submit"
+	LookupUri = "/dir/lookup?volumeId="
 )
 
 type Client struct {
@@ -53,16 +52,16 @@ type uploadResp struct {
 	Error    string
 }
 
-var defaultClient Client
+var defaultClient *Client
 
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	defaultClient = Client{DefaultMasterUrl, make(map[uint64]string)}
+	defaultClient = NewClient("localhost", 9333)
 }
 
 func ParseFid(fid string) (id, key, cookie uint64, err error) {
 	s := strings.Split(fid, ",")
-	if len(s) != 2 {
+	if len(s) != 2 || len(s[1]) <= 8 {
 		err = errors.New("Fid format invalid")
 		log.Println(err)
 		return
@@ -71,33 +70,61 @@ func ParseFid(fid string) (id, key, cookie uint64, err error) {
 		log.Println(err)
 		return
 	}
-
-	return
-}
-
-func getUrl(c *Client, fid string) (url string, err error) {
-	id, _, _, err := ParseFid(fid)
-	if err != nil {
+	//log.Println(s, len(s[1]))
+	index := len(s[1]) - 8
+	if key, err = strconv.ParseUint(s[1][:index], 16, 64); err != nil {
 		log.Println(err)
 		return
 	}
-
-	if url, err = c.lookup(id); err != nil {
+	if cookie, err = strconv.ParseUint(s[1][index:], 16, 32); err != nil {
 		log.Println(err)
 		return
 	}
-
-	url = "http://" + url + "/" + fid
-
 	return
 }
 
 func GetUrl(fid string) (url string, err error) {
-	return getUrl(&defaultClient, fid)
+	return defaultClient.GetUrl(fid)
 }
 
-func (c *Client) assign() (r *assignResp, err error) {
-	resp, err := http.Get(c.Url + AssignUri)
+func VolumeUpload(fid string, version int, filename string, file io.Reader) (size int, err error) {
+	return defaultClient.VolumeUpload(fid, version, filename, file)
+}
+
+func MasterUpload(filename string, file io.Reader) (fid string, size int, err error) {
+	return defaultClient.MasterUpload(filename, file)
+}
+
+func AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
+	return defaultClient.AssignUpload(filename, file)
+}
+
+func Download(fid string) (file io.ReadCloser, err error) {
+	return defaultClient.Download(fid)
+}
+
+func Delete(fid string) (err error) {
+	return defaultClient.Delete(fid)
+}
+
+func NewClient(ip string, port int) *Client {
+	masterUrl := "http://" + ip + ":" + strconv.Itoa(port)
+	return &Client{masterUrl, make(map[uint64]string)}
+}
+
+func (c *Client) Assign() (fid string, err error) {
+	return c.AssignN(1)
+}
+
+func (c *Client) AssignN(count int) (fid string, err error) {
+	if count <= 0 {
+		count = 1
+	}
+	url := c.Url + AssignUri
+	if count > 1 {
+		url = url + "?count=" + strconv.Itoa(count)
+	}
+	resp, err := http.Get(url)
 	if err != nil {
 		return
 	}
@@ -116,59 +143,59 @@ func (c *Client) assign() (r *assignResp, err error) {
 		return
 	}
 
-	r = assign
-	log.Printf("assign fid: %s at %s", r.Fid, r.Url)
+	fid = assign.Fid
+	log.Printf("assign fid:%s at %s, count:%d", fid, assign.Url, assign.Count)
 
 	return
 }
 
-func AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
-	r, err := defaultClient.assign()
+func (c *Client) AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
+	fid, err = c.Assign()
 	if err != nil {
 		return
 	}
 
-	data, contentType, err := makeUploadContent(filename, file)
+	size, err = c.VolumeUpload(fid, 0, filename, file)
+
+	return
+}
+
+func (c *Client) VolumeUpload(fid string, version int, filename string, file io.Reader) (size int, err error) {
+	url, err := c.GetUrl(fid)
+	if err != nil {
+		return
+	}
+	if version > 0 {
+		url = url + "_" + strconv.Itoa(version)
+	}
+
+	formData, contentType, err := c.makeFormData(filename, file)
 	if err != nil {
 		return
 	}
 
-	url := "http://" + r.Url + "/" + r.Fid
-	log.Println(url)
-
-	resp, err := upload(&defaultClient, url, contentType, data)
+	resp, err := c.upload(url, contentType, formData)
 	if err == nil {
-		fid = r.Fid
 		size = resp.Size
 	}
-
 	return
 }
 
-func makeUploadContent(filename string, content io.Reader) (data io.Reader, contentType string, err error) {
-	buf := new(bytes.Buffer)
-	writer := multipart.NewWriter(buf)
-
-	part, err := writer.CreateFormFile("file", filename)
+func (c *Client) MasterUpload(filename string, file io.Reader) (fid string, size int, err error) {
+	data, contentType, err := c.makeFormData(filename, file)
 	if err != nil {
-		log.Println(err)
 		return
 	}
-	_, err = io.Copy(part, content)
-	if err != nil {
-		log.Println(err)
-		return
+	resp, err := c.upload(c.Url+UploadUri, contentType, data)
+	if err == nil {
+		fid = resp.Fid
+		size = resp.Size
 	}
-
-	data = buf
-	contentType = writer.FormDataContentType()
-	writer.Close()
-
 	return
 }
 
-func upload(c *Client, url string, contentType string, data io.Reader) (r *uploadResp, err error) {
-	resp, err := http.Post(url, contentType, data)
+func (_ *Client) upload(url string, contentType string, formData io.Reader) (r *uploadResp, err error) {
+	resp, err := http.Post(url, contentType, formData)
 	if err != nil {
 		log.Println(err)
 		return
@@ -190,83 +217,6 @@ func upload(c *Client, url string, contentType string, data io.Reader) (r *uploa
 
 	r = upload
 
-	return
-}
-
-func Upload(filename string, file io.Reader) (fid string, size int, err error) {
-	data, contentType, err := makeUploadContent(filename, file)
-	if err != nil {
-		return
-	}
-	resp, err := upload(&defaultClient, defaultClient.Url+UploadUri, contentType, data)
-	if err == nil {
-		fid = resp.Fid
-		size = resp.Size
-	}
-	return
-}
-
-func download(c *Client, fid string) (file io.ReadCloser, err error) {
-	url, err := c.GetUrl(fid)
-	if err != nil {
-		return
-	}
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-
-	//log.Println(resp.Header.Get("Content-Type"))
-	if resp.ContentLength == 0 {
-		return nil, errors.New("File Not Found")
-	}
-
-	return resp.Body, nil
-}
-
-func Download(fid string) (file io.ReadCloser, err error) {
-	return download(&defaultClient, fid)
-}
-
-func delete(c *Client, fid string) (err error) {
-	url, err := c.GetUrl(fid)
-	if err != nil {
-		return
-	}
-
-	request, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return
-	}
-	client := http.Client{}
-
-	_, err = client.Do(request)
-	if err != nil {
-		return
-	}
-	return
-}
-
-func Delete(fid string) (err error) {
-	return delete(&defaultClient, fid)
-}
-
-func NewClient(ip string, port int) *Client {
-	masterUrl := "http://" + ip + ":" + strconv.Itoa(port)
-	return &Client{masterUrl, make(map[uint64]string)}
-}
-
-func (c *Client) Upload(filename string, file io.Reader) (fid string, size int, err error) {
-	data, contentType, err := makeUploadContent(filename, file)
-	if err != nil {
-		return
-	}
-	resp, err := upload(c, c.Url+UploadUri, contentType, data)
-	if err == nil {
-		fid = resp.Fid
-		size = resp.Size
-	}
 	return
 }
 
@@ -301,13 +251,79 @@ func (c *Client) lookup(volumeId uint64) (url string, err error) {
 }
 
 func (c *Client) GetUrl(fid string) (url string, err error) {
-	return getUrl(c, fid)
+	id, key, cookie, err := ParseFid(fid)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	log.Printf("id:%d, key:%x, cookie:%x\n", id, key, cookie)
+
+	if url, err = c.lookup(id); err != nil {
+		log.Println(err)
+		return
+	}
+
+	url = "http://" + url + "/" + fid
+
+	return
+}
+
+func (_ *Client) makeFormData(filename string, content io.Reader) (formData io.Reader, contentType string, err error) {
+	buf := new(bytes.Buffer)
+	writer := multipart.NewWriter(buf)
+
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	_, err = io.Copy(part, content)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	formData = buf
+	contentType = writer.FormDataContentType()
+	writer.Close()
+
+	return
 }
 
 func (c *Client) Download(fid string) (file io.ReadCloser, err error) {
-	return download(c, fid)
+	url, err := c.GetUrl(fid)
+	if err != nil {
+		return
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+
+	//log.Println(resp.Header.Get("Content-Type"))
+	if resp.ContentLength == 0 {
+		return nil, errors.New("File Not Found")
+	}
+
+	return resp.Body, nil
 }
 
 func (c *Client) Delete(fid string) (err error) {
-	return delete(c, fid)
+	url, err := c.GetUrl(fid)
+	if err != nil {
+		return
+	}
+
+	request, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return
+	}
+	client := http.Client{}
+
+	_, err = client.Do(request)
+	if err != nil {
+		return
+	}
+	return
 }

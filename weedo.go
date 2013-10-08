@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	AssignUri = "/dir/assign"
-	UploadUri = "/submit"
-	LookupUri = "/dir/lookup?volumeId="
+	AssignUri             = "/dir/assign"
+	UploadUri             = "/submit"
+	LookupUri             = "/dir/lookup?volumeId="
+	VolumeServerStatusUri = "/status"
+	SystemStatusUri       = "/dir/status"
 )
 
 type Client struct {
@@ -52,6 +54,61 @@ type uploadResp struct {
 	Error    string
 }
 
+type systemStatus struct {
+	Topology topology
+	Version  string
+	Error    string
+}
+
+type topology struct {
+	DataCenters dataCenter
+	Free        int
+	Max         int
+	Layouts     []layout
+}
+
+type dataCenter struct {
+	Free  int
+	Max   int
+	Racks []rack
+}
+
+type rack struct {
+	DataNodes []dataNode
+	Free      int
+	Max       int
+}
+
+type dataNode struct {
+	Free      int
+	Max       int
+	PublicUrl string
+	Url       string
+	Volumes   int
+}
+
+type layout struct {
+	Replication string
+	Writables   []uint64
+}
+
+type volumeServerStatus struct {
+	Version string
+	volumes []volume
+	Error   string
+}
+
+type volume struct {
+	Id               uint64
+	Size             uint64
+	RepType          string
+	Version          int
+	FileCount        uint64
+	DeleteCount      uint64
+	DeletedByteCount uint64
+	ReadOnly         bool
+}
+
 var defaultClient *Client
 
 func init() {
@@ -63,7 +120,7 @@ func ParseFid(fid string) (id, key, cookie uint64, err error) {
 	s := strings.Split(fid, ",")
 	if len(s) != 2 || len(s[1]) <= 8 {
 		err = errors.New("Fid format invalid")
-		log.Println(err)
+		//log.Println(err)
 		return
 	}
 	if id, err = strconv.ParseUint(s[0], 10, 32); err != nil {
@@ -91,10 +148,16 @@ func VolumeUpload(fid string, version int, filename string, file io.Reader) (siz
 	return defaultClient.VolumeUpload(fid, version, filename, file)
 }
 
+// Upload file directly to default master server: localhost:9333
+// It is same as: curl -F file=@/home/chris/myphoto.jpg http://localhost:9333/submit
 func MasterUpload(filename string, file io.Reader) (fid string, size int, err error) {
 	return defaultClient.MasterUpload(filename, file)
 }
 
+// First, contact with master server and assign a fid, then upload to volume server
+// It is same as the follow steps
+// curl http://localhost:9333/dir/assign
+// curl -F file=@example.jpg http://127.0.0.1:8080/3,01637037d6
 func AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
 	return defaultClient.AssignUpload(filename, file)
 }
@@ -107,8 +170,12 @@ func Delete(fid string) (err error) {
 	return defaultClient.Delete(fid)
 }
 
+// Get a fresh new weed client, with it's master url is ip:port
 func NewClient(ip string, port int) *Client {
-	masterUrl := "http://" + ip + ":" + strconv.Itoa(port)
+	masterUrl := ip + ":" + strconv.Itoa(port)
+	if !strings.HasPrefix(masterUrl, "http://") {
+		masterUrl = "http://" + masterUrl
+	}
 	return &Client{masterUrl, make(map[uint64]string)}
 }
 
@@ -251,12 +318,12 @@ func (c *Client) lookup(volumeId uint64) (url string, err error) {
 }
 
 func (c *Client) GetUrl(fid string) (url string, err error) {
-	id, key, cookie, err := ParseFid(fid)
+	id, _, _, err := ParseFid(fid)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	log.Printf("id:%d, key:%x, cookie:%x\n", id, key, cookie)
+	//log.Printf("id:%d, key:%x, cookie:%x\n", id, key, cookie)
 
 	if url, err = c.lookup(id); err != nil {
 		log.Println(err)
@@ -322,7 +389,55 @@ func (c *Client) Delete(fid string) (err error) {
 	client := http.Client{}
 
 	_, err = client.Do(request)
+
+	return
+}
+
+func (c *Client) VolumeServerStatus(ip string, port uint16) (err error) {
+	url := ip + ":" + strconv.Itoa(int(port))
+	if !strings.HasPrefix(url, "http://") {
+		url = "http://" + url
+	}
+	resp, err := http.Get(url + VolumeServerStatusUri)
 	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	status := new(volumeServerStatus)
+	decoder := json.NewDecoder(resp.Body)
+	if err = decoder.Decode(status); err != nil {
+		log.Println(err)
+		return
+	}
+
+	if status.Error != "" {
+		err = errors.New(status.Error)
+		log.Println(err)
+		return
+	}
+	return
+}
+
+func (c *Client) SystemStatus() (err error) {
+	resp, err := http.Get(c.Url + SystemStatusUri)
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	status := new(systemStatus)
+	decoder := json.NewDecoder(resp.Body)
+	if err = decoder.Decode(status); err != nil {
+		log.Println(err)
+		return
+	}
+
+	if status.Error != "" {
+		err = errors.New(status.Error)
+		log.Println(err)
 		return
 	}
 	return

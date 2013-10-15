@@ -32,7 +32,7 @@ type assignResp struct {
 	Fid       string
 	Url       string
 	PublicUrl string
-	Size      int
+	Size      int64
 	Error     string
 }
 
@@ -50,7 +50,7 @@ type uploadResp struct {
 	Fid      string
 	FileName string
 	FileUrl  string
-	Size     int
+	Size     int64
 	Error    string
 }
 
@@ -144,13 +144,13 @@ func GetUrl(fid string) (url string, err error) {
 	return defaultClient.GetUrl(fid)
 }
 
-func VolumeUpload(fid string, version int, filename string, file io.Reader) (size int, err error) {
+func VolumeUpload(fid string, version int, filename string, file io.Reader) (size int64, err error) {
 	return defaultClient.VolumeUpload(fid, version, filename, file)
 }
 
 // Upload file directly to default master server: localhost:9333
 // It is same as: curl -F file=@/home/chris/myphoto.jpg http://localhost:9333/submit
-func MasterUpload(filename string, file io.Reader) (fid string, size int, err error) {
+func MasterUpload(filename string, file io.Reader) (fid string, size int64, err error) {
 	return defaultClient.MasterUpload(filename, file)
 }
 
@@ -158,11 +158,11 @@ func MasterUpload(filename string, file io.Reader) (fid string, size int, err er
 // It is same as the follow steps
 // curl http://localhost:9333/dir/assign
 // curl -F file=@example.jpg http://127.0.0.1:8080/3,01637037d6
-func AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
+func AssignUpload(filename string, file io.Reader) (fid string, size int64, err error) {
 	return defaultClient.AssignUpload(filename, file)
 }
 
-func Download(fid string) (file io.ReadCloser, length int64, err error) {
+func Download(fid string) (file io.ReadCloser, err error) {
 	return defaultClient.Download(fid)
 }
 
@@ -216,7 +216,7 @@ func (c *Client) AssignN(count int) (fid string, err error) {
 	return
 }
 
-func (c *Client) AssignUpload(filename string, file io.Reader) (fid string, size int, err error) {
+func (c *Client) AssignUpload(filename string, file io.Reader) (fid string, size int64, err error) {
 	fid, err = c.Assign()
 	if err != nil {
 		return
@@ -227,7 +227,7 @@ func (c *Client) AssignUpload(filename string, file io.Reader) (fid string, size
 	return
 }
 
-func (c *Client) VolumeUpload(fid string, version int, filename string, file io.Reader) (size int, err error) {
+func (c *Client) VolumeUpload(fid string, version int, filename string, file io.Reader) (size int64, err error) {
 	url, err := c.GetUrl(fid)
 	if err != nil {
 		return
@@ -248,7 +248,7 @@ func (c *Client) VolumeUpload(fid string, version int, filename string, file io.
 	return
 }
 
-func (c *Client) MasterUpload(filename string, file io.Reader) (fid string, size int, err error) {
+func (c *Client) MasterUpload(filename string, file io.Reader) (fid string, size int64, err error) {
 	data, contentType, err := c.makeFormData(filename, file)
 	if err != nil {
 		return
@@ -357,7 +357,7 @@ func (_ *Client) makeFormData(filename string, content io.Reader) (formData io.R
 	return
 }
 
-func (c *Client) Download(fid string) (file io.ReadCloser, length int64, err error) {
+func (c *Client) Download(fid string) (file io.ReadCloser, err error) {
 	url, err := c.GetUrl(fid)
 	if err != nil {
 		return
@@ -370,10 +370,10 @@ func (c *Client) Download(fid string) (file io.ReadCloser, length int64, err err
 
 	//log.Println(resp.Header.Get("Content-Type"))
 	if resp.ContentLength == 0 {
-		return nil, 0, errors.New("File Not Found")
+		return nil, errors.New("File Not Found")
 	}
 
-	return resp.Body, resp.ContentLength, nil
+	return resp.Body, nil
 }
 
 func (c *Client) Delete(fid string) (err error) {

@@ -162,7 +162,7 @@ func AssignUpload(filename string, file io.Reader) (fid string, size int, err er
 	return defaultClient.AssignUpload(filename, file)
 }
 
-func Download(fid string) (file io.ReadCloser, err error) {
+func Download(fid string) (file io.ReadCloser, length int64, err error) {
 	return defaultClient.Download(fid)
 }
 
@@ -357,7 +357,7 @@ func (_ *Client) makeFormData(filename string, content io.Reader) (formData io.R
 	return
 }
 
-func (c *Client) Download(fid string) (file io.ReadCloser, err error) {
+func (c *Client) Download(fid string) (file io.ReadCloser, length int64, err error) {
 	url, err := c.GetUrl(fid)
 	if err != nil {
 		return
@@ -370,10 +370,10 @@ func (c *Client) Download(fid string) (file io.ReadCloser, err error) {
 
 	//log.Println(resp.Header.Get("Content-Type"))
 	if resp.ContentLength == 0 {
-		return nil, errors.New("File Not Found")
+		return nil, 0, errors.New("File Not Found")
 	}
 
-	return resp.Body, nil
+	return resp.Body, resp.ContentLength, nil
 }
 
 func (c *Client) Delete(fid string) (err error) {

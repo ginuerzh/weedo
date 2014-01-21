@@ -221,7 +221,7 @@ func (c *Client) AssignN(count int) (fid string, err error) {
 	}
 
 	fid = assign.Fid
-	log.Printf("assign fid:%s at %s, count:%d", fid, assign.Url, assign.Count)
+	//log.Printf("assign fid:%s at %s, count:%d", fid, assign.Url, assign.Count)
 
 	return
 }

@@ -114,6 +114,18 @@ func Delete(fid string, count int) (err error) {
 	return defaultClient.Delete(fid, count)
 }
 
+func (c *Client) GetUrl(fid string) (publicUrl, url string, err error) {
+	vol, err := c.Volume(fid, "")
+	if err != nil {
+		return
+	}
+
+	publicUrl = vol.PublicUrl + "/" + fid
+	url = vol.Url + "/" + fid
+
+	return
+}
+
 func (c *Client) AssignUpload(filename, mimeType string, file io.Reader) (fid string, size int64, err error) {
 
 	fid, err = c.Master().Assign()

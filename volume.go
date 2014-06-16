@@ -21,6 +21,9 @@ func NewVolume(url, publicUrl string) *Volume {
 	if !strings.HasPrefix(url, "http:") {
 		url = "http://" + url
 	}
+	if !strings.HasPrefix(publicUrl, "http:") {
+		publicUrl = "http://" + publicUrl
+	}
 	return &Volume{
 		Url:       url,
 		PublicUrl: publicUrl,

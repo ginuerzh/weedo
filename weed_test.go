@@ -66,6 +66,23 @@ func TestVolumeSubmit(t *testing.T) {
 	t.Log("volume submit", filename, fid, size)
 }
 
+func TestGetUrl(t *testing.T) {
+	file, err := os.Open(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fid, _, err := client.Master().Submit(filename, "text/plain", file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicUrl, url, err := client.GetUrl(fid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("publicUrl:", publicUrl, "url:", url)
+}
+
 func TestDelete(t *testing.T) {
 	file, err := os.Open(filename)
 	if err != nil {

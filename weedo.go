@@ -229,7 +229,8 @@ func del(url string) error {
 	if err != nil {
 		return err
 	}
-	_, err = client.Do(request)
+	resp, err := client.Do(request)
+	resp.Body.Close()
 	return err
 }
 

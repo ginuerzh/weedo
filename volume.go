@@ -32,7 +32,7 @@ func NewVolume(url, publicUrl string) *Volume {
 
 // Upload File
 func (v *Volume) Upload(fid string, version int, filename, mimeType string, file io.Reader) (size int64, err error) {
-	url := v.Url + "/" + fid
+	url := v.PublicUrl + "/" + fid
 	if version > 0 {
 		url = url + "_" + strconv.Itoa(version)
 	}
@@ -56,7 +56,7 @@ func (v *Volume) Submit(filename, mimeType string, file io.Reader) (fid string, 
 	if err != nil {
 		return
 	}
-	resp, err := upload(v.Url+"/submit", contentType, data)
+	resp, err := upload(v.PublicUrl+"/submit", contentType, data)
 	if err == nil {
 		fid = resp.Fid
 		size = resp.Size
@@ -71,7 +71,7 @@ func (v *Volume) Delete(fid string, count int) (err error) {
 		count = 1
 	}
 
-	url := v.Url + "/" + fid
+	url := v.PublicUrl + "/" + fid
 	if err := del(url); err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (v *Volume) AssignVolume(volumeId uint64, replica string) error {
 		values.Set("replication", replica)
 	}
 
-	_, err := http.Get(v.Url + "/admin/assign_volume?" + values.Encode())
+	_, err := http.Get(v.PublicUrl + "/admin/assign_volume?" + values.Encode())
 	return err
 }
 
@@ -115,7 +115,7 @@ type volume struct {
 
 // Check Volume Server Status
 func (v *Volume) Status() (err error) {
-	url := v.Url
+	url := v.PublicUrl
 	if !strings.HasPrefix(url, "http://") {
 		url = "http://" + url
 	}

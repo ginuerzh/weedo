@@ -8,25 +8,31 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 )
 
 type Master struct {
 	Url string
 }
 
-func NewMaster(url string) *Master {
-	if !strings.HasPrefix(url, "http:") {
-		url = "http://" + url
-	}
+func NewMaster(addr string) *Master {
 	return &Master{
-		Url: url,
+		Url: addr,
 	}
 }
 
 // Assign a file key
 func (m *Master) Assign() (string, error) {
-	return m.AssignN(1)
+	return m.AssignArgs(url.Values{})
+}
+
+// Assign multi file keys
+func (m *Master) AssignN(count int) (fid string, err error) {
+	args := url.Values{}
+	if count > 0 {
+		args.Set("count", strconv.Itoa(count))
+	}
+
+	return m.AssignArgs(args)
 }
 
 type assignResp struct {
@@ -38,16 +44,16 @@ type assignResp struct {
 	Error     string
 }
 
-// Assign multi file keys
-func (m *Master) AssignN(count int) (fid string, err error) {
-	if count <= 0 {
-		count = 1
+// v0.4 or later only
+func (m *Master) AssignArgs(args url.Values) (fid string, err error) {
+	u := url.URL{
+		Scheme:   "http",
+		Host:     m.Url,
+		Path:     "/dir/assign",
+		RawQuery: args.Encode(),
 	}
-	url := m.Url + "/dir/assign"
-	if count > 1 {
-		url = url + "?count=" + strconv.Itoa(count)
-	}
-	resp, err := http.Get(url)
+
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return
 	}
@@ -82,12 +88,17 @@ type location struct {
 
 // Lookup Volume
 func (m *Master) lookup(volumeId, collection string) (*Volume, error) {
-	v := url.Values{}
-	v.Add("volumeId", volumeId)
-	if len(collection) > 0 {
-		v.Add("collection", collection)
+	args := url.Values{}
+	args.Set("volumeId", volumeId)
+	args.Set("collection", collection)
+
+	u := url.URL{
+		Scheme:   "http",
+		Host:     m.Url,
+		Path:     "/dir/lookup",
+		RawQuery: args.Encode(),
 	}
-	resp, err := http.Get(m.Url + "/dir/lookup?" + v.Encode())
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +119,15 @@ func (m *Master) lookup(volumeId, collection string) (*Volume, error) {
 
 // Force Garbage Collection
 func (m *Master) GC(threshold float64) error {
-	resp, err := http.Get(m.Url + "/vol/vacuum?garbageThreshold=" +
-		strconv.FormatFloat(threshold, 'f', -1, 64))
+	args := url.Values{}
+	args.Set("garbageThreshold", strconv.FormatFloat(threshold, 'f', -1, 64))
+	u := url.URL{
+		Scheme:   "http",
+		Host:     m.Url,
+		Path:     "/vol/vacuum",
+		RawQuery: args.Encode(),
+	}
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return err
 	}
@@ -119,20 +137,29 @@ func (m *Master) GC(threshold float64) error {
 }
 
 // Pre-Allocate Volumes
-func (m *Master) Grow(count int, collection, replica, dataCenter string) error {
-	v := url.Values{}
-	v.Set("count", strconv.Itoa(count))
-	if len(collection) > 0 {
-		v.Set("collection", collection)
+func (m *Master) Grow(count int, collection, replication, dataCenter string) error {
+	args := url.Values{}
+	if count > 0 {
+		args.Set("count", strconv.Itoa(count))
 	}
-	if len(replica) > 0 {
-		v.Set("replication", replica)
-	}
-	if len(dataCenter) > 0 {
-		v.Set("dataCenter", dataCenter)
-	}
+	args.Set("collection", collection)
+	args.Set("replication", replication)
+	args.Set("dataCenter", dataCenter)
 
-	_, err := http.Get(m.Url + "/vol/grow?" + v.Encode())
+	return m.GrowArgs(args)
+}
+
+// v0.4 or later only
+func (m *Master) GrowArgs(args url.Values) error {
+	u := url.URL{
+		Scheme:   "http",
+		Host:     m.Url,
+		Path:     "/vol/grow",
+		RawQuery: args.Encode(),
+	}
+	resp, err := http.Get(u.String())
+	resp.Body.Close()
+
 	return err
 }
 
@@ -142,7 +169,14 @@ func (m *Master) Submit(filename, mimeType string, file io.Reader) (fid string, 
 	if err != nil {
 		return
 	}
-	resp, err := upload(m.Url+"/submit", contentType, data)
+
+	u := url.URL{
+		Scheme: "http",
+		Host:   m.Url,
+		Path:   "/submit",
+	}
+
+	resp, err := upload(u.String(), contentType, data)
 	if err == nil {
 		fid = resp.Fid
 		size = resp.Size
@@ -191,7 +225,12 @@ type layout struct {
 
 // Check System Status
 func (m *Master) Status() (err error) {
-	resp, err := http.Get(m.Url + "/dir/status")
+	u := url.URL{
+		Scheme: "http",
+		Host:   m.Url,
+		Path:   "/dir/status",
+	}
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return
 	}

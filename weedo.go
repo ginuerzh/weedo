@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -107,7 +108,11 @@ func ParseFid(s string) (fid Fid, err error) {
 // curl http://localhost:9333/dir/assign
 // curl -F file=@example.jpg http://127.0.0.1:8080/3,01637037d6
 func AssignUpload(filename, mimeType string, file io.Reader) (fid string, size int64, err error) {
-	return defaultClient.AssignUpload(filename, mimeType, file)
+	return AssignUploadArgs(filename, mimeType, file, url.Values{})
+}
+
+func AssignUploadArgs(filename, mimeType string, file io.Reader, args url.Values) (fid string, size int64, err error) {
+	return defaultClient.AssignUploadArgs(filename, mimeType, file, args)
 }
 
 func Delete(fid string, count int) (err error) {
@@ -127,13 +132,16 @@ func (c *Client) GetUrl(fid string) (publicUrl, url string, err error) {
 }
 
 func (c *Client) AssignUpload(filename, mimeType string, file io.Reader) (fid string, size int64, err error) {
+	return c.AssignUploadArgs(filename, mimeType, file, url.Values{})
+}
 
-	fid, err = c.Master().Assign()
+func (c *Client) AssignUploadArgs(filename, mimeType string, file io.Reader, args url.Values) (fid string, size int64, err error) {
+	fid, err = c.Master().AssignArgs(args)
 	if err != nil {
 		return
 	}
 
-	vol, err := c.Volume(fid, "")
+	vol, err := c.Volume(fid, args.Get("collection"))
 	if err != nil {
 		return
 	}

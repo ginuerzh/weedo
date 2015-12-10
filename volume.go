@@ -4,6 +4,7 @@ package weedo
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,28 +14,26 @@ import (
 )
 
 type Volume struct {
-	Url       string
-	PublicUrl string
+	Locations []Location
 }
 
-func NewVolume(url, publicUrl string) *Volume {
-	if !strings.HasPrefix(url, "http:") {
-		url = "http://" + url
+func NewVolume(locations []Location) *Volume {
+	for i, _ := range locations {
+		if !strings.HasPrefix(locations[i].Url, "http:") {
+			locations[i].Url = fmt.Sprintf("http://%s", locations[i].Url)
+		}
+		if !strings.HasPrefix(locations[i].PublicUrl, "http:") {
+			locations[i].PublicUrl = fmt.Sprintf("http://%s", locations[i].PublicUrl)
+		}
 	}
-	if !strings.HasPrefix(publicUrl, "http:") {
-		publicUrl = "http://" + publicUrl
-	}
-	return &Volume{
-		Url:       url,
-		PublicUrl: publicUrl,
-	}
+	return &Volume{Locations: locations}
 }
 
 // Upload File
 func (v *Volume) Upload(fid string, version int, filename, mimeType string, file io.Reader) (size int64, err error) {
-	url := v.PublicUrl + "/" + fid
+	url := fmt.Sprintf("%s/%s", v.PublicUrl(), fid) // http://localhost:8080/3,7363da54ae
 	if version > 0 {
-		url = url + "_" + strconv.Itoa(version)
+		url = fmt.Sprintf("%s_%d", url, version) // http://localhost:8080/3,7363da54ae_1
 	}
 
 	formData, contentType, err := makeFormData(filename, mimeType, file)
@@ -56,7 +55,7 @@ func (v *Volume) Submit(filename, mimeType string, file io.Reader) (fid string, 
 	if err != nil {
 		return
 	}
-	resp, err := upload(v.PublicUrl+"/submit", contentType, data)
+	resp, err := upload(v.PublicUrl()+"/submit", contentType, data)
 	if err == nil {
 		fid = resp.Fid
 		size = resp.Size
@@ -71,13 +70,13 @@ func (v *Volume) Delete(fid string, count int) (err error) {
 		count = 1
 	}
 
-	url := v.PublicUrl + "/" + fid
+	url := fmt.Sprintf("%s/%s", v.PublicUrl(), fid)
 	if err := del(url); err != nil {
 		return err
 	}
 
 	for i := 1; i < count; i++ {
-		if err := del(url + "_" + strconv.Itoa(i)); err != nil {
+		if err := del(fmt.Sprintf("%s_%d", url, i)); err != nil {
 			log.Println(err)
 		}
 	}
@@ -92,8 +91,22 @@ func (v *Volume) AssignVolume(volumeId uint64, replica string) error {
 		values.Set("replication", replica)
 	}
 
-	_, err := http.Get(v.PublicUrl + "/admin/assign_volume?" + values.Encode())
+	_, err := http.Get(fmt.Sprintf("%s/admin/assign_volume?%s", v.PublicUrl(), values.Encode()))
 	return err
+}
+
+func (v *Volume) Url() string {
+	if len(v.Locations) == 0 {
+		return ""
+	}
+	return v.Locations[0].Url
+}
+
+func (v *Volume) PublicUrl() string {
+	if len(v.Locations) == 0 {
+		return ""
+	}
+	return v.Locations[0].PublicUrl
 }
 
 type volumeStatus struct {
@@ -115,11 +128,7 @@ type volume struct {
 
 // Check Volume Server Status
 func (v *Volume) Status() (err error) {
-	url := v.PublicUrl
-	if !strings.HasPrefix(url, "http://") {
-		url = "http://" + url
-	}
-	resp, err := http.Get(url + "/status")
+	resp, err := http.Get(fmt.Sprintf("%s/status", v.PublicUrl()))
 	if err != nil {
 		return
 	}

@@ -119,15 +119,35 @@ func Delete(fid string, count int) (err error) {
 	return defaultClient.Delete(fid, count)
 }
 
-func (c *Client) GetUrl(fid string) (publicUrl, url string, err error) {
-	vol, err := c.Volume(fid, "")
+func (c *Client) GetUrl(fid string, collection ...string) (publicUrl, url string, err error) {
+	col := ""
+	if len(collection) > 0 {
+		col = collection[0]
+	}
+	vol, err := c.Volume(fid, col)
 	if err != nil {
 		return
 	}
 
-	publicUrl = vol.PublicUrl + "/" + fid
-	url = vol.Url + "/" + fid
+	publicUrl = fmt.Sprintf("%s/%s", vol.PublicUrl(), fid)
+	url = fmt.Sprintf("%s/%s", vol.Url(), fid)
+	return
+}
 
+func (c *Client) GetUrls(fid string, collection ...string) (locations []Location, err error) {
+	col := ""
+	if len(collection) > 0 {
+		col = collection[0]
+	}
+	vol, err := c.Volume(fid, col)
+	if err != nil {
+		return
+	}
+	for _, loc := range vol.Locations {
+		loc.PublicUrl = fmt.Sprintf("%s/%s", loc.PublicUrl, fid)
+		loc.Url = fmt.Sprintf("%s/%s", loc.Url, fid)
+		locations = append(locations, loc)
+	}
 	return
 }
 
@@ -150,8 +170,12 @@ func (c *Client) AssignUploadArgs(filename, mimeType string, file io.Reader, arg
 	return
 }
 
-func (c *Client) Delete(fid string, count int) (err error) {
-	vol, err := c.Volume(fid, "")
+func (c *Client) Delete(fid string, count int, collection ...string) (err error) {
+	col := ""
+	if len(collection) > 0 {
+		col = collection[0]
+	}
+	vol, err := c.Volume(fid, col)
 	if err != nil {
 		return
 	}

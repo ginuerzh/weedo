@@ -77,11 +77,11 @@ func (m *Master) AssignArgs(args url.Values) (fid string, err error) {
 }
 
 type lookupResp struct {
-	Locations []location
+	Locations []Location
 	Error     string
 }
 
-type location struct {
+type Location struct {
 	Url       string
 	PublicUrl string
 }
@@ -114,7 +114,7 @@ func (m *Master) lookup(volumeId, collection string) (*Volume, error) {
 		return nil, errors.New(lookup.Error)
 	}
 
-	return NewVolume(lookup.Locations[0].Url, lookup.Locations[0].PublicUrl), nil
+	return NewVolume(lookup.Locations), nil
 }
 
 // Force Garbage Collection

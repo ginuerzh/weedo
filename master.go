@@ -163,8 +163,12 @@ func (m *Master) GrowArgs(args url.Values) error {
 	return err
 }
 
-// Upload File Directly
 func (m *Master) Submit(filename, mimeType string, file io.Reader) (fid string, size int64, err error) {
+	return m.SubmitArgs(filename, mimeType, file, url.Values{})
+}
+
+// Upload File Directly
+func (m *Master) SubmitArgs(filename, mimeType string, file io.Reader, args url.Values) (fid string, size int64, err error) {
 	data, contentType, err := makeFormData(filename, mimeType, file)
 	if err != nil {
 		return
@@ -174,6 +178,7 @@ func (m *Master) Submit(filename, mimeType string, file io.Reader) (fid string, 
 		Scheme: "http",
 		Host:   m.Url,
 		Path:   "/submit",
+		RawQuery: args.Encode(),
 	}
 
 	resp, err := upload(u.String(), contentType, data)

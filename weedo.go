@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -262,7 +263,15 @@ func del(url string) error {
 		return err
 	}
 	resp, err := client.Do(request)
-	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		txt, _ := ioutil.ReadAll(resp.Body)
+		return errors.New(string(txt))
+	} else {
+		resp.Body.Close()
+	}
 	return err
 }
 

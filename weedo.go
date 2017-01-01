@@ -266,11 +266,10 @@ func del(url string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		txt, _ := ioutil.ReadAll(resp.Body)
 		return errors.New(string(txt))
-	} else {
-		resp.Body.Close()
 	}
 	return err
 }

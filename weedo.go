@@ -34,14 +34,14 @@ type Client struct {
 	filers  map[string]*Filer
 }
 
-func NewClient(masterUrl string, filerUrls ...string) *Client {
+func NewClient(masterAddr string, filerUrls ...string) *Client {
 	filers := make(map[string]*Filer)
 	for _, url := range filerUrls {
 		filer := NewFiler(url)
 		filers[filer.Url] = filer
 	}
 	return &Client{
-		master:  NewMaster(masterUrl),
+		master:  NewMaster(masterAddr),
 		volumes: make(map[uint64]*Volume),
 		filers:  filers,
 	}

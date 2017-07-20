@@ -266,12 +266,14 @@ func del(url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK &&
+		resp.StatusCode != http.StatusAccepted {
 		txt, _ := ioutil.ReadAll(resp.Body)
 		return errors.New(string(txt))
 	}
-	return err
+	return nil
 }
 
 func decodeJson(r io.Reader, v interface{}) error {

@@ -175,9 +175,9 @@ func (m *Master) SubmitArgs(filename, mimeType string, file io.Reader, args url.
 	}
 
 	u := url.URL{
-		Scheme: "http",
-		Host:   m.Url,
-		Path:   "/submit",
+		Scheme:   "http",
+		Host:     m.Url,
+		Path:     "/submit",
 		RawQuery: args.Encode(),
 	}
 
@@ -197,7 +197,7 @@ type systemStatus struct {
 }
 
 type topology struct {
-	DataCenters dataCenter
+	DataCenters []dataCenter
 	Free        int
 	Max         int
 	Layouts     []layout
